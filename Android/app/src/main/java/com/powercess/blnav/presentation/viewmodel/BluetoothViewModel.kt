@@ -17,6 +17,166 @@ import kotlinx.coroutines.launch
  *
  * 负责UI状态管理和业务逻辑，遵循MVVM架构模式
  *
+ * ==================== 蓝牙设备扫描与过滤集成 ====================
+ *
+ * 此ViewModel已完整集成蓝牙设备扫描和过滤功能：
+ *
+ * 1. 工作流程：
+ *    - 用户启动扫描 → 系统扫描蓝牙设备 → 应用过滤规则 → 只显示通过规则的设备
+ *
+ * 2. 过滤器的三层架构：
+ *
+ *    a) BluetoothFilterLocalDataSource（过滤器数据源层）
+ *       - 管理过滤规则的CRUD操作
+ *       - 负责过滤规则的本地持久化
+ *       - 提供shouldFilterDevice()方法进行过滤判断
+ *
+ *    b) BluetoothLocalDataSource（蓝牙扫描层，已集成过滤）
+ *       - 与系统蓝牙API交互
+ *       - 在扫描发现设备时，调用过滤器检查设备是否应显示
+ *       - applyFilters()方法在设备被添加到列表前进行检查
+ *
+ *    c) BluetoothRepository（仓库层）
+ *       - 作为UI和数据源之间的中介
+ *       - 暴露isScanning、discoveredDevices等状态流
+ *
+ * 3. 扫描流程（带过滤）：
+ *
+ *    startScan()被调用
+ *      ↓
+ *    系统蓝牙模块开始扫描
+ *      ↓
+ *    发现设备 → bluetoothReceiver.onReceive()
+ *      ↓
+ *    创建BluetoothDeviceModel
+ *      ↓
+ *    调用addDevice(model)
+ *      ↓
+ *    调用applyFilters(device) ← 关键：过滤检查发生在这里
+ *      ↓
+ *    shouldFilterDevice(name, mac)
+ *      ↓
+ *    判断设备是否应被过滤
+ *      ↓
+ *    返回true=过滤，false=允许
+ *      ↓
+ *    过滤通过的设备被添加到discoveredDevices列表
+ *      ↓
+ *    UI订阅discoveredDevices并显示设备列表
+ *
+ * 4. 过滤规则示例：
+ *
+ *    示例1 - 创建白名单规则（只允许iPhone）:
+ *    ```
+ *    val filter = BluetoothFilterModel(
+ *        id = "filter_1",
+ *        alias = "允许iPhone设备",
+ *        filterRule = "iPhone",
+ *        matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+ *        enableRegex = false,
+ *        filterType = BluetoothFilterModel.FilterType.WHITELIST,
+ *        isEnabled = true,
+ *        description = "只允许设备名包含iPhone的设备"
+ *    )
+ *    viewModel.addFilterRule(filter)
+ *    ```
+ *    结果：扫描后的设备列表中只会显示设备名包含"iPhone"的设备
+ *
+ *    示例2 - 创建黑名单规则（禁止特定MAC地址）:
+ *    ```
+ *    val filter = BluetoothFilterModel(
+ *        id = "filter_2",
+ *        alias = "禁止特定设备",
+ *        filterRule = "AA:BB:CC:DD:EE:FF",
+ *        matchType = BluetoothFilterModel.MatchType.MAC_ADDRESS,
+ *        enableRegex = false,
+ *        filterType = BluetoothFilterModel.FilterType.BLACKLIST,
+ *        isEnabled = true,
+ *        description = "禁止MAC地址为AA:BB:CC:DD:EE:FF的设备"
+ *    )
+ *    viewModel.addFilterRule(filter)
+ *    ```
+ *    结果：扫描后的设备列表中不会显示MAC地址为"AA:BB:CC:DD:EE:FF"的设备
+ *
+ *    示例3 - 使用正则表达式（匹配Apple所有产品）:
+ *    ```
+ *    val filter = BluetoothFilterModel(
+ *        id = "filter_3",
+ *        alias = "Apple设备白名单",
+ *        filterRule = "^(iPhone|iPad|Apple Watch|AirPods).*",
+ *        matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+ *        enableRegex = true,  // 启用正则表达式
+ *        filterType = BluetoothFilterModel.FilterType.WHITELIST,
+ *        isEnabled = true,
+ *        description = "只允许Apple品牌的设备"
+ *    )
+ *    viewModel.addFilterRule(filter)
+ *    ```
+ *    结果：扫描后的设备列表中只会显示Apple产品的设备
+ *
+ * 5. 过滤规则类型说明：
+ *
+ *    matchType（匹配类型）：
+ *    - DEVICE_NAME: 按蓝牙设备名称进行过滤
+ *    - MAC_ADDRESS: 按MAC地址进行过滤
+ *
+ *    filterType（过滤类型）：
+ *    - WHITELIST: 白名单模式，只允许匹配的设备
+ *    - BLACKLIST: 黑名单模式，阻止匹配的设备
+ *
+ *    enableRegex（正则表达式）：
+ *    - false: 使用简单的字符串匹配（包含判断）
+ *    - true: 使用正则表达式进行高级模式匹配
+ *
+ * 6. 过滤逻辑详解：
+ *
+ *    情况1 - 只有白名单规则：
+ *    - 设备必须匹配至少一条白名单规则才会显示
+ *    - 不匹配任何白名单规则的设备会被过滤隐藏
+ *
+ *    情况2 - 只有黑名单规则：
+ *    - 匹配任何黑名单规则的设备会被过滤隐藏
+ *    - 不匹配黑名单的设备会显示
+ *
+ *    情况3 - 同时有白名单和黑名单：
+ *    - 优先检查白名单（必须先匹配白名单）
+ *    - 然后检查黑名单（即使在白名单中也不能在黑名单中）
+ *    - 最终只显示"在白名单中且不在黑名单中"的设备
+ *
+ *    情况4 - 没有任何规则或所有规则都禁用：
+ *    - 所有扫描到的设备都会显示
+ *
+ * 7. 实时更新和动态过滤：
+ *
+ *    在扫描过程中可以随时添加、更新或删除过滤规则：
+ *    ```
+ *    // 正在扫描时添加新规则
+ *    viewModel.addFilterRule(newFilter)
+ *    // 之后发现的新设备会使用新规则进行过滤
+ *
+ *    // 禁用某个规则
+ *    viewModel.updateFilterRule(existingFilter.copy(isEnabled = false))
+ *    // 该规则不再被应用，之前被过滤的设备可能会重新出现（如果其他规则允许）
+ *    ```
+ *
+ * 8. UI集成示例：
+ *
+ *    ```
+ *    // 在UI中使用设备列表
+ *    @Composable
+ *    fun DeviceListScreen(viewModel: BluetoothViewModel) {
+ *        val devices by viewModel.discoveredDevices.collectAsState()
+ *        val isScanning by viewModel.isScanning.collectAsState()
+ *
+ *        LazyColumn {
+ *            items(devices) { device ->
+ *                // 这些设备已经通过了所有的过滤规则检查
+ *                DeviceItem(device)
+ *            }
+ *        }
+ *    }
+ *    ```
+ *
  * ==================== 过滤功能使用指南 ====================
  *
  * 1. 添加过滤规则：
@@ -56,6 +216,7 @@ import kotlinx.coroutines.launch
  * - id: 规则的唯一标识符，不能重复
  * - alias: 规则的别名，用于UI显示和用户识别
  * - filterRule: 过滤规则字符串（设备名称或MAC地址的匹配规则）
+ * - matchType: 匹配类型（DEVICE_NAME 或 MAC_ADDRESS）
  * - enableRegex: 是否启用正则表达式匹配（false = 模糊匹配，true = 正则表达式）
  * - filterType: 过滤类型（WHITELIST = 白名单，BLACKLIST = 黑名单）
  * - isEnabled: 是否启用当前规则（禁用的规则不会被应用）
@@ -66,12 +227,20 @@ import kotlinx.coroutines.launch
 @Suppress("unused")
 class BluetoothViewModel(context: Context) : ViewModel() {
 
-    private val bluetoothRepository = BluetoothRepository(
-        BluetoothLocalDataSource(context)
-    )
+    // 初始化过滤器数据源
+    private val filterDataSource = BluetoothFilterLocalDataSource(context)
 
-    private val filterRepository = BluetoothFilterRepository(
-        BluetoothFilterLocalDataSource(context)
+    // 创建蓝牙本地数据源，并传递过滤器数据源
+    // 这样扫描时会自动应用过滤规则
+    private val bluetoothLocalDataSource = BluetoothLocalDataSource(context, filterDataSource)
+
+    // 初始化过滤规则仓库
+    private val filterRepository = BluetoothFilterRepository(filterDataSource)
+
+    // 创建蓝牙仓库，并传递过滤规则仓库
+    private val bluetoothRepository = BluetoothRepository(
+        bluetoothLocalDataSource,
+        filterRepository
     )
 
     // 暴露给UI的状态流

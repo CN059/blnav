@@ -9,8 +9,20 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * 负责数据的统一管理和访问，作为数据源和业务逻辑之间的中介
  * 实现仓库模式，便于测试和维护
+ *
+ * ==================== 过滤器集成 ====================
+ *
+ * BluetoothRepository支持可选的BluetoothFilterRepository集成：
+ *
+ * 1. 如果在创建时传递filterRepository，蓝牙设备扫描会自动应用过滤规则
+ * 2. 扫描时会根据当前启用的过滤规则过滤设备
+ * 3. 支持白名单和黑名单模式
+ * 4. 支持按设备名和MAC地址进行过滤
  */
-class BluetoothRepository(private val localDataSource: BluetoothLocalDataSource) {
+class BluetoothRepository(
+    private val localDataSource: BluetoothLocalDataSource,
+    val filterRepository: BluetoothFilterRepository? = null
+) {
 
     /**
      * 获取扫描状态流
