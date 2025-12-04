@@ -15,10 +15,39 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.powercess.blnav.data.model.BluetoothDeviceModel
 import com.powercess.blnav.presentation.viewmodel.BluetoothViewModel
+import com.powercess.blnav.data.datasource.local.BluetoothDeviceManagerDataSource
 
 /**
  * 首页 - 蓝牙设备管理页面
  * 显示网络请求结果和蓝牙设备信息
+ *
+ * ==================== 数据源说明 ====================
+ *
+ * 此页面现在使用全局BluetoothDeviceManagerDataSource作为实时设备数据源：
+ *
+ * 1. 数据特性：
+ *    - 已通过过滤规则检查的设备
+ *    - 已自动去重（相同MAC地址的设备会更新）
+ *    - 按500ms间隔定时更新（缓冲机制）
+ *    - 包含完整信息：MAC地址、设备名、RSSI信号强度
+ *
+ * 2. 工作流程：
+ *    a) BluetoothLocalDataSource 扫描蓝牙设备
+ *    b) 应用过滤规则检查
+ *    c) 自动同步到全局管理器（BluetoothDeviceManagerDataSource）
+ *    d) 管理器内部缓冲设备更新
+ *    e) 每500ms发布一次设备列表
+ *    f) 此页面订阅并实时显示
+ *
+ * 3. 性能优势：
+ *    - UI更新频率受控（最多2次/秒，而不是数百次/秒）
+ *    - 缓冲机制避免高频StateFlow更新
+ *    - CPU和内存开销大幅降低
+ *
+ * 4. 数据一致性：
+ *    - 所有显示的设备都是已通过当前活跃过滤规则的
+ *    - RSSI、设备名、MAC地址都是最新的
+ *    - 可直接用于定位、统计、上传等场景
  */
 @Composable
 fun HomeScreen(
@@ -28,13 +57,26 @@ fun HomeScreen(
     // 获取上下文用于ViewModel创建
     val context = LocalContext.current
 
-    // 创建或获取ViewModel实例
+    // ==================== 关键：先创建ViewModel以初始化全局管理器 ====================
+    // 创建或获取ViewModel实例（用于扫描控制）
+    // 重要：ViewModel的构造函数会初始化BluetoothLocalDataSource，
+    // 后者会通过initializeWith()创建并初始化全局BluetoothDeviceManagerDataSource
+    // 因此必须先创建ViewModel，再获取管理器实例
     val bluetoothViewModel = remember { BluetoothViewModel(context) }
 
-    // 订阅扫描状态、设备列表和错误信息
+    // 订阅扫描状态和错误信息（来自ViewModel）
     val isScanning by bluetoothViewModel.isScanning.collectAsState()
-    val discoveredDevices by bluetoothViewModel.discoveredDevices.collectAsState()
     val errorMessage by bluetoothViewModel.errorMessage.collectAsState()
+
+    // ==================== 现在获取全局设备管理器 ====================
+    // 获取全局设备管理器实例（已过滤、按500ms间隔更新的设备数据源）
+    // 此时管理器已由ViewModel初始化，getInstance()会返回同一实例
+    val deviceManager = remember { BluetoothDeviceManagerDataSource.getInstance() }
+
+    // 订阅全局管理器的设备列表（已过滤、已去重、按策略定时发布）
+    // 这个数据源被所有需要蓝牙设备信息的模块共享使用
+    // 包含：MAC地址、设备名、RSSI信号强度
+    val managedDevices by deviceManager.managedDevices.collectAsState()
 
     // 清理资源
     DisposableEffect(Unit) {
@@ -185,14 +227,24 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
+                // 设备列表标题，显示设备数量和数据源信息
                 Text(
-                    text = "蓝牙设备列表 (${discoveredDevices.size})",
+                    text = "蓝牙设备列表 (${managedDevices.size})",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.secondary
                 )
+
+                // 数据源说明
+                Text(
+                    text = "✓ 已过滤 · 实时更新 · 每500ms刷新",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF4CAF50),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (discoveredDevices.isEmpty()) {
+                if (managedDevices.isEmpty()) {
                     Text(
                         text = "暂无设备\n点击\"开启扫描\"按钮开始扫描蓝牙设备",
                         style = MaterialTheme.typography.bodyMedium,
@@ -203,14 +255,22 @@ fun HomeScreen(
                             .padding(24.dp)
                     )
                 } else {
+                    // ==================== 使用全局管理器的设备列表 ====================
+                    // managedDevices 是从BluetoothDeviceManagerDataSource获取的
+                    // 特点：
+                    // - 已通过过滤规则检查
+                    // - 已去重（相同MAC的设备会更新）
+                    // - 按500ms定时发布（避免高频更新）
+                    // - 包含最新的RSSI、设备名、MAC地址等信息
+
                     // 使用 LazyColumn 显示设备列表（避免长列表性能问题）
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 300.dp),
+                            .heightIn(max = 400.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(discoveredDevices) { device ->
+                        items(managedDevices) { device ->
                             BluetoothDeviceItem(device)
                         }
                     }

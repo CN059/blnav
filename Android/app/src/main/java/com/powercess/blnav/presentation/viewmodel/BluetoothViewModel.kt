@@ -223,6 +223,63 @@ import kotlinx.coroutines.launch
  * - description: 规则的详细描述（可选）
  * - createTime: 规则创建时间戳（自动设置）
  * - updateTime: 规则最后更新时间戳（自动设置）
+ *
+ * ==================== 新增：全局设备管理器（BluetoothDeviceManagerDataSource）====================
+ *
+ * 为了支持其他模块（如定位服务、数据统计等）直接访问蓝牙设备数据，新增了全局设备管理器。
+ *
+ * 1. 架构图：
+ *
+ *    ┌────────────────────────────────────────────────────────────┐
+ *    │  其他模块（定位、统计、上传等）                            │
+ *    │  val mgr = BluetoothDeviceManagerDataSource.getInstance()  │
+ *    │  mgr.managedDevices.collect { devices -> ... }             │
+ *    └────────────────────────────────────────────────────────────┘
+ *                              ↑ 订阅
+ *    ┌────────────────────────────────────────────────────────────┐
+ *    │  BluetoothDeviceManagerDataSource（全局单例）              │
+ *    │  - 缓冲设备数据                                            │
+ *    │  - 按500ms间隔发布                                         │
+ *    │  - StateFlow<List<BluetoothDeviceModel>>                   │
+ *    └────────────────────────────────────────────────────────────┘
+ *                              ↑ updateDevice()
+ *    ┌────────────────────────────────────────────────────────────┐
+ *    │  BluetoothLocalDataSource（此ViewModel使用）               │
+ *    │  - 系统蓝牙扫描                                            │
+ *    │  - 应用过滤规则                                            │
+ *    │  - 同步到管理器                                            │
+ *    └────────────────────────────────────────────────────────────┘
+ *
+ * 2. 使用示例：
+ *
+ *    // 在定位服务中
+ *    val deviceManager = BluetoothDeviceManagerDataSource.getInstance()
+ *    deviceManager.managedDevices.collect { devices ->
+ *        // 设备已通过过滤、已去重、已整合RSSI/名字/MAC
+ *        uploadBeaconsToLocationServer(devices)
+ *    }
+ *
+ *    // 在统计模块中
+ *    deviceManager.managedDevices.collect { devices ->
+ *        analyzeSignalStrength(devices)  // 分析信号强度
+ *        trackDeviceTypes(devices)        // 统计设备类型
+ *    }
+ *
+ * 3. 关键特性：
+ *
+ *    - 全局单例：所有模块共享同一个管理器
+ *    - 缓冲机制：避免高频更新（数百/秒 → 2/秒）
+ *    - 定时发布：按500ms间隔发布设备列表
+ *    - 解耦设计：其他模块无需创建BluetoothLocalDataSource
+ *    - 完整数据：设备名、MAC地址、RSSI信号强度
+ *
+ * 4. 初始化流程：
+ *
+ *    - BluetoothLocalDataSource 创建时自动初始化管理器
+ *    - 其他模块通过 getInstance() 获取同一实例
+ *    - 数据自动同步，无需手动操作
+ *
+ * 详见BluetoothScanStrategy、BluetoothDeviceManagerDataSource、BLUETOOTH_MANAGER_INTEGRATION_GUIDE.md
  */
 @Suppress("unused")
 class BluetoothViewModel(context: Context) : ViewModel() {
