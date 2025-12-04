@@ -36,7 +36,11 @@ fun AdvancedBluetoothSettingsScreen(
         }
     }
 
-    val filterRules by (filterRulesFlow?.collectAsState(emptyList()) ?: remember { mutableStateOf(emptyList()) })
+    val filterRules by (filterRulesFlow?.collectAsState(emptyList()) ?: remember {
+        mutableStateOf(
+            emptyList()
+        )
+    })
 
     Column(
         modifier = modifier
@@ -251,13 +255,6 @@ private fun FilterRuleCard(
                             )
                         }
 
-                        // 显示过滤类型
-                        Text(
-                            text = if (filter.filterType == BluetoothFilterModel.FilterType.WHITELIST) "白名单" else "黑名单",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
                         // 显示正则表达式标签
                         if (filter.enableRegex) {
                             Surface(
@@ -272,6 +269,13 @@ private fun FilterRuleCard(
                                 )
                             }
                         }
+
+                        // 显示过滤类型
+                        Text(
+                            text = if (filter.filterType == BluetoothFilterModel.FilterType.WHITELIST) "白名单" else "黑名单",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 // 操作按钮区域 - 编辑和删除
@@ -348,7 +352,12 @@ private fun FilterRuleCard(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "创建于: ${android.text.format.DateFormat.format("MM-dd HH:mm", filter.createTime)}",
+                    text = "创建于: ${
+                        android.text.format.DateFormat.format(
+                            "MM-dd HH:mm",
+                            filter.createTime
+                        )
+                    }",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -774,8 +783,10 @@ private fun AddFilterRuleDialog(
 @Composable
 private fun FilterStatisticsCard(filterRules: List<BluetoothFilterModel>) {
     val enabledCount = filterRules.count { it.isEnabled }
-    val whitelistCount = filterRules.count { it.filterType == BluetoothFilterModel.FilterType.WHITELIST }
-    val blacklistCount = filterRules.count { it.filterType == BluetoothFilterModel.FilterType.BLACKLIST }
+    val whitelistCount =
+        filterRules.count { it.filterType == BluetoothFilterModel.FilterType.WHITELIST }
+    val blacklistCount =
+        filterRules.count { it.filterType == BluetoothFilterModel.FilterType.BLACKLIST }
 
     Card(
         modifier = Modifier
