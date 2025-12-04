@@ -182,7 +182,7 @@ class BluetoothViewModel(context: Context) : ViewModel() {
         viewModelScope.launch {
             val shouldFilter = filterRepository.shouldFilterDevice(deviceName, macAddress)
             if (shouldFilter) {
-                // 可以在这里添加日志或其他处理逻辑
+                // TODO 可以在这里添加日志或其他处理逻辑
             }
         }
     }

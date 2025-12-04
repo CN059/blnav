@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -108,6 +109,15 @@ fun AdvancedBluetoothSettingsScreen(
                     items(filterRules) { filter ->
                         FilterRuleCard(
                             filter = filter,
+                            onToggleEnabled = { newState ->
+                                viewModel?.updateFilterRule(
+                                    filter.copy(isEnabled = newState)
+                                )
+                            },
+                            onEdit = {
+                                // 将过滤规则传递给编辑对话框
+                                viewModel?.updateFilterRule(it)
+                            },
                             onDelete = {
                                 viewModel?.deleteFilterRule(filter.id)
                             }
@@ -164,12 +174,34 @@ private fun EmptyFilterRulesPlaceholder() {
 
 /**
  * 过滤规则卡片
+ *
+ * 显示单个过滤规则的详细信息，包括：
+ * - 规则别名、匹配类型、过滤类型等标签
+ * - 规则的详细内容和描述
+ * - 启用/禁用、编辑和删除操作按钮
+ *
+ * 提供三个操作时的确认或编辑对话框：
+ * 1. 切换启用状态时显示确认提示
+ * 2. 编辑规则时显示编辑对话框
+ * 3. 删除规则时显示确认提示
  */
 @Composable
 private fun FilterRuleCard(
     filter: BluetoothFilterModel,
-    onDelete: () -> Unit
+    onToggleEnabled: (Boolean) -> Unit = {},
+    onEdit: (BluetoothFilterModel) -> Unit = {},
+    onDelete: () -> Unit = {}
 ) {
+    // 用于控制状态切换确认对话框的显示
+    var showToggleConfirmDialog by remember { mutableStateOf(false) }
+    var pendingToggleState by remember { mutableStateOf(false) }
+
+    // 用于控制编辑对话框的显示
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    // 用于控制删除确认对话框的显示
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -187,7 +219,7 @@ private fun FilterRuleCard(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // 规则标题和启用状态
+            // 规则标题和操作按钮
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -242,17 +274,35 @@ private fun FilterRuleCard(
                         }
                     }
                 }
-                // 删除按钮
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
+                // 操作按钮区域 - 编辑和删除
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.wrapContentWidth()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // 编辑按钮
+                    IconButton(
+                        onClick = { showEditDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "编辑",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // 删除按钮
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 
@@ -273,15 +323,19 @@ private fun FilterRuleCard(
                 )
             }
 
-            // 启用状态指示器
+            // 启用状态指示器和切换按钮
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                // 可交互的Checkbox - 点击时弹出确认对话框
                 Checkbox(
                     checked = filter.isEnabled,
-                    onCheckedChange = null,
+                    onCheckedChange = { newState ->
+                        pendingToggleState = newState
+                        showToggleConfirmDialog = true
+                    },
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
@@ -301,6 +355,256 @@ private fun FilterRuleCard(
             }
         }
     }
+
+    // 切换启用/禁用状态时的确认对话框
+    if (showToggleConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showToggleConfirmDialog = false },
+            title = {
+                Text(
+                    if (pendingToggleState) "启用规则？" else "禁用规则？"
+                )
+            },
+            text = {
+                Text(
+                    if (pendingToggleState)
+                        "确认要启用规则 \"${filter.alias}\" 吗？启用后此规则将立即生效。"
+                    else
+                        "确认要禁用规则 \"${filter.alias}\" 吗？禁用后此规则将不再生效。"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showToggleConfirmDialog = false
+                        onToggleEnabled(pendingToggleState)
+                    }
+                ) {
+                    Text("确认")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showToggleConfirmDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 编辑规则时的对话框
+    if (showEditDialog) {
+        EditFilterRuleDialog(
+            filter = filter,
+            onDismiss = { showEditDialog = false },
+            onSave = { editedFilter ->
+                showEditDialog = false
+                onEdit(editedFilter)
+            }
+        )
+    }
+
+    // 删除规则时的确认对话框
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text("删除规则？")
+            },
+            text = {
+                Text(
+                    "确认要删除规则 \"${filter.alias}\" 吗？此操作不可撤销，删除后此规则将被永久移除。"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+/**
+ * 编辑过滤规则对话框
+ *
+ * 用于编辑现有的过滤规则。支持修改规则的所有属性：
+ * - 别名、规则内容、描述
+ * - 匹配类型（设备名/MAC地址）
+ * - 过滤类型（白名单/黑名单）
+ * - 正则表达式开关
+ *
+ * 注意：规则的ID和创建时间保持不变，只更新updateTime
+ */
+@Composable
+private fun EditFilterRuleDialog(
+    filter: BluetoothFilterModel,
+    onDismiss: () -> Unit,
+    onSave: (BluetoothFilterModel) -> Unit
+) {
+    var alias by remember { mutableStateOf(filter.alias) }
+    var filterRule by remember { mutableStateOf(filter.filterRule) }
+    var enableRegex by remember { mutableStateOf(filter.enableRegex) }
+    var filterType by remember { mutableStateOf(filter.filterType) }
+    var description by remember { mutableStateOf(filter.description) }
+    var matchType by remember { mutableStateOf(filter.matchType) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("编辑过滤规则")
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    // 别名输入
+                    OutlinedTextField(
+                        value = alias,
+                        onValueChange = { alias = it },
+                        label = { Text("规则别名") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        singleLine = true
+                    )
+
+                    // 匹配类型选择
+                    Text(
+                        text = "匹配类型",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            BluetoothFilterModel.MatchType.DEVICE_NAME to "设备名称",
+                            BluetoothFilterModel.MatchType.MAC_ADDRESS to "MAC地址"
+                        ).forEach { (type, label) ->
+                            FilterChip(
+                                selected = matchType == type,
+                                onClick = { matchType = type },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+
+                    // 规则输入（根据匹配类型显示提示信息）
+                    OutlinedTextField(
+                        value = filterRule,
+                        onValueChange = { filterRule = it },
+                        label = {
+                            Text(
+                                when (matchType) {
+                                    BluetoothFilterModel.MatchType.DEVICE_NAME -> "设备名称或模式"
+                                    BluetoothFilterModel.MatchType.MAC_ADDRESS -> "MAC地址 (XX:XX:XX:XX:XX:XX)"
+                                }
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        singleLine = true
+                    )
+
+                    // 正则表达式开关
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = enableRegex,
+                            onCheckedChange = { enableRegex = it },
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "启用正则表达式",
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    // 规则类型选择
+                    Text(
+                        text = "过滤类型",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            BluetoothFilterModel.FilterType.WHITELIST to "白名单",
+                            BluetoothFilterModel.FilterType.BLACKLIST to "黑名单"
+                        ).forEach { (type, label) ->
+                            FilterChip(
+                                selected = filterType == type,
+                                onClick = { filterType = type },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+
+                    // 描述输入
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("描述（可选）") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        maxLines = 2
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (alias.isNotBlank() && filterRule.isNotBlank()) {
+                        val editedFilter = filter.copy(
+                            alias = alias,
+                            filterRule = filterRule,
+                            matchType = matchType,
+                            enableRegex = enableRegex,
+                            filterType = filterType,
+                            description = description,
+                            updateTime = System.currentTimeMillis()
+                        )
+                        onSave(editedFilter)
+                    }
+                }
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 /**
