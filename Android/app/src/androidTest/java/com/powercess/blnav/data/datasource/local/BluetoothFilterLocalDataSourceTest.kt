@@ -439,6 +439,156 @@ class BluetoothFilterLocalDataSourceTest {
         assertTrue("StateFlow应该发出过滤规则列表更新", emittedFiltersCount > 0)
     }
 
+    /**
+     * 测试21: 验证按设备名进行过滤
+     */
+    @Test
+    fun testFilterByDeviceName() = runBlocking<Unit> {
+        val filter1 = createTestFilter(
+            id = "name_filter_1",
+            alias = "iPhone过滤器",
+            filterRule = "iPhone",
+            matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+            enableRegex = false
+        )
+
+        val filter2 = createTestFilter(
+            id = "name_filter_2",
+            alias = "Android过滤器",
+            filterRule = "Android",
+            matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+            enableRegex = false
+        )
+
+        dataSource.addFilter(filter1)
+        dataSource.addFilter(filter2)
+
+        val matchedFilters = dataSource.filterByDeviceName("iPhone 12 Pro")
+        assertEquals("应该匹配1个过滤规则", 1, matchedFilters.size)
+        assertEquals("匹配的过滤规则应该是iPhone过滤器", "iPhone过滤器", matchedFilters[0].alias)
+    }
+
+    /**
+     * 测试22: 验证按MAC地址进行过滤
+     */
+    @Test
+    fun testFilterByMacAddress() = runBlocking<Unit> {
+        val filter1 = createTestFilter(
+            id = "mac_filter_1",
+            alias = "MAC白名单",
+            filterRule = "00:1A:7D:DA:71:13",
+            matchType = BluetoothFilterModel.MatchType.MAC_ADDRESS,
+            enableRegex = false
+        )
+
+        val filter2 = createTestFilter(
+            id = "mac_filter_2",
+            alias = "MAC黑名单",
+            filterRule = "AA:BB:CC:DD:EE:FF",
+            matchType = BluetoothFilterModel.MatchType.MAC_ADDRESS,
+            enableRegex = false
+        )
+
+        dataSource.addFilter(filter1)
+        dataSource.addFilter(filter2)
+
+        val matchedFilters = dataSource.filterByMacAddress("00:1A:7D:DA:71:13")
+        assertEquals("应该匹配1个过滤规则", 1, matchedFilters.size)
+        assertEquals("匹配的过滤规则应该是MAC白名单", "MAC白名单", matchedFilters[0].alias)
+    }
+
+    /**
+     * 测试23: 验证使用正则表达式进行设备名过滤
+     */
+    @Test
+    fun testFilterByDeviceNameWithRegex() = runBlocking<Unit> {
+        val filter = createTestFilter(
+            id = "regex_name_filter",
+            alias = "正则表达式设备名过滤器",
+            filterRule = "^(iPhone|iPad).*",
+            matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+            enableRegex = true
+        )
+
+        dataSource.addFilter(filter)
+
+        val matchedFilters1 = dataSource.filterByDeviceName("iPhone 12 Pro")
+        assertEquals("应该匹配iPhone", 1, matchedFilters1.size)
+
+        val matchedFilters2 = dataSource.filterByDeviceName("iPad Air")
+        assertEquals("应该匹配iPad", 1, matchedFilters2.size)
+
+        val matchedFilters3 = dataSource.filterByDeviceName("Samsung Galaxy")
+        assertEquals("不应该匹配Samsung", 0, matchedFilters3.size)
+    }
+
+    /**
+     * 测试24: 验证检查设备是否应该被过滤（白名单模式）
+     */
+    @Test
+    fun testShouldFilterDeviceWithWhitelist() = runBlocking<Unit> {
+        val whitelistFilter = createTestFilter(
+            id = "whitelist_check",
+            alias = "白名单检查",
+            filterRule = "iPhone",
+            matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+            filterType = BluetoothFilterModel.FilterType.WHITELIST
+        )
+
+        dataSource.addFilter(whitelistFilter)
+
+        // 白名单中的设备应该被允许（不过滤）
+        val shouldFilterIphone = dataSource.shouldFilterDevice("iPhone 12", "00:1A:7D:DA:71:13")
+        assertFalse("白名单中的iPhone设备应该被允许", shouldFilterIphone)
+
+        // 不在白名单中的设备应该被过滤
+        val shouldFilterAndroid = dataSource.shouldFilterDevice("Android Device", "AA:BB:CC:DD:EE:FF")
+        assertTrue("不在白名单中的Android设备应该被过滤", shouldFilterAndroid)
+    }
+
+    /**
+     * 测试25: 验证检查设备是否应该被过滤（黑名单模式）
+     */
+    @Test
+    fun testShouldFilterDeviceWithBlacklist() = runBlocking<Unit> {
+        val blacklistFilter = createTestFilter(
+            id = "blacklist_check",
+            alias = "黑名单检查",
+            filterRule = "00:1A:7D:DA:71:13",
+            matchType = BluetoothFilterModel.MatchType.MAC_ADDRESS,
+            filterType = BluetoothFilterModel.FilterType.BLACKLIST
+        )
+
+        dataSource.addFilter(blacklistFilter)
+
+        // 黑名单中的设备应该被过滤
+        val shouldFilterBlacklisted = dataSource.shouldFilterDevice("Unknown Device", "00:1A:7D:DA:71:13")
+        assertTrue("黑名单中的设备应该被过滤", shouldFilterBlacklisted)
+
+        // 不在黑名单中的设备应该被允许
+        val shouldFilterOther = dataSource.shouldFilterDevice("Other Device", "AA:BB:CC:DD:EE:FF")
+        assertFalse("不在黑名单中的设备应该被允许", shouldFilterOther)
+    }
+
+    /**
+     * 测试26: 验证禁用的过滤规则不会影响过滤结果
+     */
+    @Test
+    fun testDisabledFilterNotApplied() = runBlocking<Unit> {
+        val disabledFilter = createTestFilter(
+            id = "disabled_filter",
+            alias = "禁用的过滤器",
+            filterRule = "iPhone",
+            matchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
+            isEnabled = false
+        )
+
+        dataSource.addFilter(disabledFilter)
+
+        val matchedFilters = dataSource.filterByDeviceName("iPhone 12")
+        assertEquals("禁用的过滤器不应该被匹配", 0, matchedFilters.size)
+    }
+
     // ==================== 辅助方法 ====================
 
     /**
@@ -448,6 +598,7 @@ class BluetoothFilterLocalDataSourceTest {
         id: String,
         alias: String,
         filterRule: String,
+        matchType: BluetoothFilterModel.MatchType = BluetoothFilterModel.MatchType.DEVICE_NAME,
         enableRegex: Boolean = false,
         filterType: BluetoothFilterModel.FilterType = BluetoothFilterModel.FilterType.WHITELIST,
         isEnabled: Boolean = true,
@@ -457,6 +608,7 @@ class BluetoothFilterLocalDataSourceTest {
             id = id,
             alias = alias,
             filterRule = filterRule,
+            matchType = matchType,
             enableRegex = enableRegex,
             filterType = filterType,
             isEnabled = isEnabled,

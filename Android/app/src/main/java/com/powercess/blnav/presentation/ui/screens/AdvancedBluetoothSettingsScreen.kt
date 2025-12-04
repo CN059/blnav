@@ -64,6 +64,11 @@ fun AdvancedBluetoothSettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.Top
         ) {
+            // 过滤规则统计卡片
+            FilterStatisticsCard(filterRules = filterRules)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // 过滤规则标题
             Row(
                 modifier = Modifier
@@ -197,11 +202,45 @@ private fun FilterRuleCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "类型: ${if (filter.filterType == BluetoothFilterModel.FilterType.WHITELIST) "白名单" else "黑名单"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 显示匹配类型标签
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                text = if (filter.matchType == BluetoothFilterModel.MatchType.DEVICE_NAME) "设备名" else "MAC",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(4.dp, 2.dp)
+                            )
+                        }
+
+                        // 显示过滤类型
+                        Text(
+                            text = if (filter.filterType == BluetoothFilterModel.FilterType.WHITELIST) "白名单" else "黑名单",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // 显示正则表达式标签
+                        if (filter.enableRegex) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f),
+                                shape = MaterialTheme.shapes.extraSmall
+                            ) {
+                                Text(
+                                    text = "正则",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.padding(4.dp, 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 // 删除按钮
                 IconButton(
@@ -224,25 +263,6 @@ private fun FilterRuleCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // 正则表达式标签
-            if (filter.enableRegex) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Surface(
-                    modifier = Modifier
-                        .wrapContentWidth()
-                        .padding(top = 4.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = "正则表达式",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.padding(4.dp, 2.dp)
-                    )
-                }
-            }
-
             // 描述
             if (filter.description.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
@@ -256,7 +276,8 @@ private fun FilterRuleCard(
             // 启用状态指示器
             Spacer(modifier = Modifier.height(8.dp))
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Checkbox(
                     checked = filter.isEnabled,
@@ -270,6 +291,12 @@ private fun FilterRuleCard(
                         MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "创建于: ${android.text.format.DateFormat.format("MM-dd HH:mm", filter.createTime)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -289,6 +316,7 @@ private fun AddFilterRuleDialog(
     var enableRegex by remember { mutableStateOf(false) }
     var filterType by remember { mutableStateOf(BluetoothFilterModel.FilterType.WHITELIST) }
     var description by remember { mutableStateOf("") }
+    var matchType by remember { mutableStateOf(BluetoothFilterModel.MatchType.DEVICE_NAME) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -296,7 +324,9 @@ private fun AddFilterRuleDialog(
             Text("添加过滤规则")
         },
         text = {
-            LazyColumn {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 item {
                     // 别名输入
                     OutlinedTextField(
@@ -309,11 +339,42 @@ private fun AddFilterRuleDialog(
                         singleLine = true
                     )
 
-                    // 规则输入
+                    // 匹配类型选择
+                    Text(
+                        text = "匹配类型",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            BluetoothFilterModel.MatchType.DEVICE_NAME to "设备名称",
+                            BluetoothFilterModel.MatchType.MAC_ADDRESS to "MAC地址"
+                        ).forEach { (type, label) ->
+                            FilterChip(
+                                selected = matchType == type,
+                                onClick = { matchType = type },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+
+                    // 规则输入（根据匹配类型显示提示信息）
                     OutlinedTextField(
                         value = filterRule,
                         onValueChange = { filterRule = it },
-                        label = { Text("过滤规则") },
+                        label = {
+                            Text(
+                                when (matchType) {
+                                    BluetoothFilterModel.MatchType.DEVICE_NAME -> "设备名称或模式"
+                                    BluetoothFilterModel.MatchType.MAC_ADDRESS -> "MAC地址 (XX:XX:XX:XX:XX:XX)"
+                                }
+                            )
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
@@ -324,7 +385,7 @@ private fun AddFilterRuleDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp),
+                            .padding(bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
@@ -339,10 +400,15 @@ private fun AddFilterRuleDialog(
                     }
 
                     // 规则类型选择
+                    Text(
+                        text = "过滤类型",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp),
+                            .padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf(
@@ -378,6 +444,7 @@ private fun AddFilterRuleDialog(
                             id = "filter_${System.currentTimeMillis()}",
                             alias = alias,
                             filterRule = filterRule,
+                            matchType = matchType,
                             enableRegex = enableRegex,
                             filterType = filterType,
                             description = description
@@ -397,3 +464,54 @@ private fun AddFilterRuleDialog(
     )
 }
 
+/**
+ * 过滤规则统计卡片
+ */
+@Composable
+private fun FilterStatisticsCard(filterRules: List<BluetoothFilterModel>) {
+    val enabledCount = filterRules.count { it.isEnabled }
+    val whitelistCount = filterRules.count { it.filterType == BluetoothFilterModel.FilterType.WHITELIST }
+    val blacklistCount = filterRules.count { it.filterType == BluetoothFilterModel.FilterType.BLACKLIST }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatisticItem(label = "总规则数", value = filterRules.size.toString())
+            StatisticItem(label = "已启用", value = enabledCount.toString())
+            StatisticItem(label = "白名单", value = whitelistCount.toString())
+            StatisticItem(label = "黑名单", value = blacklistCount.toString())
+        }
+    }
+}
+
+/**
+ * 统计项目
+ */
+@Composable
+private fun RowScope.StatisticItem(label: String, value: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.weight(1f)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
