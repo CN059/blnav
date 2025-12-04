@@ -2,7 +2,6 @@ package com.powercess.blnav.presentation.ui.screens
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.powercess.blnav.data.model.BluetoothFilterModel
 import com.powercess.blnav.presentation.viewmodel.BluetoothViewModel
 import org.junit.Before
 import org.junit.Rule
