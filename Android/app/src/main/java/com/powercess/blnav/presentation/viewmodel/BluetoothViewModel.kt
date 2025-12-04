@@ -2,10 +2,15 @@ package com.powercess.blnav.presentation.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.powercess.blnav.data.datasource.local.BluetoothLocalDataSource
+import com.powercess.blnav.data.datasource.local.BluetoothFilterLocalDataSource
 import com.powercess.blnav.data.repository.BluetoothRepository
+import com.powercess.blnav.data.repository.BluetoothFilterRepository
 import com.powercess.blnav.data.model.BluetoothDeviceModel
+import com.powercess.blnav.data.model.BluetoothFilterModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 蓝牙管理ViewModel
@@ -19,10 +24,18 @@ class BluetoothViewModel(context: Context) : ViewModel() {
         BluetoothLocalDataSource(context)
     )
 
+    private val filterRepository = BluetoothFilterRepository(
+        BluetoothFilterLocalDataSource(context)
+    )
+
     // 暴露给UI的状态流
     val isScanning: StateFlow<Boolean> = bluetoothRepository.isScanning
     val discoveredDevices: StateFlow<List<BluetoothDeviceModel>> = bluetoothRepository.discoveredDevices
     val errorMessage: StateFlow<String?> = bluetoothRepository.errorMessage
+
+    // 过滤规则相关
+    val filterRules: StateFlow<List<BluetoothFilterModel>> = filterRepository.filterRules
+    val filterErrorMessage: StateFlow<String?> = filterRepository.errorMessage
 
     /**
      * 检查是否拥有扫描权限
@@ -67,6 +80,49 @@ class BluetoothViewModel(context: Context) : ViewModel() {
      */
     fun clearDevices() {
         bluetoothRepository.clearDevices()
+    }
+
+    // ==================== 过滤规则管理方法 ====================
+
+    /**
+     * 添加过滤规则
+     */
+    fun addFilterRule(filter: BluetoothFilterModel) {
+        viewModelScope.launch {
+            filterRepository.addFilter(filter)
+        }
+    }
+
+    /**
+     * 删除过滤规则
+     */
+    fun deleteFilterRule(filterId: String) {
+        viewModelScope.launch {
+            filterRepository.deleteFilter(filterId)
+        }
+    }
+
+    /**
+     * 更新过滤规则
+     */
+    fun updateFilterRule(filter: BluetoothFilterModel) {
+        viewModelScope.launch {
+            filterRepository.updateFilter(filter)
+        }
+    }
+
+    /**
+     * 获取启用的过滤规则
+     */
+    fun getEnabledFilterRules(): List<BluetoothFilterModel> {
+        return filterRules.value.filter { it.isEnabled }
+    }
+
+    /**
+     * 获取所有过滤规则
+     */
+    fun getAllFilterRules(): List<BluetoothFilterModel> {
+        return filterRules.value
     }
 
     /**

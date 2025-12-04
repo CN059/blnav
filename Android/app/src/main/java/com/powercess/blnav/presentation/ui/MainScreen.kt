@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -16,6 +17,7 @@ import com.powercess.blnav.presentation.ui.screens.AdvancedBluetoothSettingsScre
 import com.powercess.blnav.presentation.ui.screens.HomeScreen
 import com.powercess.blnav.presentation.ui.screens.MapScreen
 import com.powercess.blnav.presentation.ui.screens.SettingsScreen
+import com.powercess.blnav.presentation.viewmodel.BluetoothViewModel
 
 /**
  * 主屏幕 - 包含底部导航栏和内容区域
@@ -139,25 +141,21 @@ fun BottomNavigationBar(
 /**
  * 导航图 - 定义路由和对应的页面
  */
-@Composable// 表明这是一个 可组合函数，用于描述 UI；
+@Composable
 fun NavigationGraph(
-    navController: NavHostController,// 来自 rememberNavController() 的导航控制器，用于 监听和驱动当前显示哪个页面；
+    navController: NavHostController,
     networkResult: String,
-    modifier: Modifier = Modifier// 用于布局控制（如 padding、size），由上层 MainScreen 通过 Scaffold 的 innerPadding 传入，防止内容被系统栏遮挡。
+    modifier: Modifier = Modifier
 ) {
-    // NavHost 是 Compose Navigation 的 根容器
-    /**
-     *     监听 navController 的当前路由状态；
-     *     根据路由 动态决定渲染哪一个 composable 块；
-     *     在页面切换时 智能管理 Composable 的生命周期与状态。*/
+    // 为了在composable中使用ViewModel，需要通过LocalContext获取context
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val viewModel = remember { BluetoothViewModel(context) }
+
     NavHost(
         navController = navController,
         startDestination = BottomNavItem.Home.route,
         modifier = modifier
     ) {
-
-        /**
-         * 下面这几个是在注册路由规则：当 navController 的当前 route 等于 相对应的.route 时，执行大括号内的 Composable；*/
 
         // 首页路由
         composable(route = BottomNavItem.Home.route) {
@@ -181,6 +179,7 @@ fun NavigationGraph(
         // 高级蓝牙设置页路由
         composable(route = "advanced_bluetooth_settings") {
             AdvancedBluetoothSettingsScreen(
+                viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
