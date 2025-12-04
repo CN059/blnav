@@ -12,6 +12,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.powercess.blnav.presentation.ui.navigation.BottomNavItem
 import com.powercess.blnav.presentation.ui.navigation.bottomNavItems
+import com.powercess.blnav.presentation.ui.screens.AdvancedBluetoothSettingsScreen
 import com.powercess.blnav.presentation.ui.screens.HomeScreen
 import com.powercess.blnav.presentation.ui.screens.MapScreen
 import com.powercess.blnav.presentation.ui.screens.SettingsScreen
@@ -30,6 +31,13 @@ fun MainScreen(
     // 返回值是 NavHostController 类型，这个类型有什么用处？
     val navController = rememberNavController()
 
+    // 获取当前导航状态，用于判断是否显示底部导航栏
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    // 判断是否显示底部导航栏（高级蓝牙设置页面时隐藏）
+    val showBottomBar = currentRoute != "advanced_bluetooth_settings"
+
     // Scaffold 布局，脚手架布局，定义了这个MainScreen的整体结构，能否理解为是一个动态UI声明文件？
     // Scaffold 是 Material 3 的基础布局容器，支持 topBar、bottomBar、floatingActionButton 等；
     Scaffold(
@@ -38,7 +46,9 @@ fun MainScreen(
         // bottomBar 参数定义是 bottomBar: @Composable () -> Unit = {}，相当于传递一个注解为 @Composable 的函数吗？也就是UI布局函数？
         // 传入一个 Composable Lambda，用于渲染底部栏；
         bottomBar = {
-            BottomNavigationBar(navController = navController)
+            if (showBottomBar) {
+                BottomNavigationBar(navController = navController)
+            }
         }
     ) {
         // 这里面是什么意思，innerPadding 是从哪里来的，起到了什么作用？
@@ -161,7 +171,20 @@ fun NavigationGraph(
 
         // 设置页路由
         composable(route = BottomNavItem.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateToAdvancedBluetooth = {
+                    navController.navigate("advanced_bluetooth_settings")
+                }
+            )
+        }
+
+        // 高级蓝牙设置页路由
+        composable(route = "advanced_bluetooth_settings") {
+            AdvancedBluetoothSettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }

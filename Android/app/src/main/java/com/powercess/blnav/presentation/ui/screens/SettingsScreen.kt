@@ -12,7 +12,8 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun SettingsScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToAdvancedBluetooth: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -54,6 +55,15 @@ fun SettingsScreen(
                         checked = bluetoothEnabled,
                         onCheckedChange = { bluetoothEnabled = it }
                     )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onNavigateToAdvancedBluetooth,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("高级蓝牙设置")
                 }
             }
         }
