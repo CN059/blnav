@@ -7,9 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import com.powercess.blnav.common.logger.AppLogger
-import com.powercess.blnav.common.permission.BluetoothPermissionConfig
-import com.powercess.blnav.common.permission.GlobalPermissionManager
-import com.powercess.blnav.common.permission.createGlobalPermissionManager
+import com.powercess.blnav.common.utils.permission.BluetoothPermissionConfig
+import com.powercess.blnav.common.utils.permission.GlobalPermissionManager
+import com.powercess.blnav.common.utils.permission.createGlobalPermissionManager
 import com.powercess.blnav.presentation.ui.MainScreen
 import com.powercess.blnav.presentation.ui.theme.BlnavTheme
 class MainActivity : ComponentActivity() {

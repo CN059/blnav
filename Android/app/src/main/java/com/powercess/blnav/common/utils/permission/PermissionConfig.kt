@@ -1,4 +1,4 @@
-package com.powercess.blnav.common.permission
+package com.powercess.blnav.common.utils.permission
 /**
  * 权限配置接口
  *

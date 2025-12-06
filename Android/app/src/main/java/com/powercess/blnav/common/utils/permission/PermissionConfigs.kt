@@ -1,4 +1,4 @@
-package com.powercess.blnav.common.permission
+package com.powercess.blnav.common.utils.permission
 
 import android.Manifest
 import android.content.Context
@@ -65,53 +65,3 @@ class BluetoothPermissionConfig(
         return context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
     }
 }
-
-
-class CameraPermissionConfig(
-    private val context: Context
-) : PermissionConfig {
-    override val permissionType: String = "CAMERA"
-    override fun getRequiredPermissions(): Array<String> {
-        return arrayOf(Manifest.permission.CAMERA)
-    }
-    override fun getRationaleMessage(): String {
-        return "应用需要相机权限来拍摄照片或扫描二维码。"
-    }
-    override fun isRequired(): Boolean {
-        // 相机权限为可选权限，拒绝后不会退出应用
-        return false
-    }
-    override fun isFeatureSupported(): Boolean {
-        return context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
-    }
-}
-
-class StoragePermissionConfig(
-    private val context: Context
-) : PermissionConfig {
-    override val permissionType: String = "STORAGE"
-    override fun getRequiredPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+ 使用细粒度媒体权限
-            arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
-        }
-    }
-    override fun getRationaleMessage(): String {
-        return "应用需要存储权限来保存或读取本地文件。"
-    }
-    override fun isRequired(): Boolean {
-        return false
-    }
-    override fun isFeatureSupported(): Boolean {
-        return true
-    }
-}
-

@@ -1,7 +1,10 @@
-package com.powercess.blnav.common.permission
+package com.powercess.blnav.common.utils.permission
 
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -323,11 +326,11 @@ class GlobalPermissionManager(
      */
     private fun openAppSettings() {
         try {
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                android.net.Uri.fromParts("package", activity.packageName, null)
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", activity.packageName, null)
             )
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activity.startActivity(intent)
             AppLogger.debug(TAG, "跳转到应用设置页面")
         } catch (e: Exception) {
