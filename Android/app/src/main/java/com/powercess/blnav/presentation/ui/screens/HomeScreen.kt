@@ -15,15 +15,38 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.powercess.blnav.data.model.BluetoothDeviceModel
 import com.powercess.blnav.presentation.viewmodel.BluetoothViewModel
-import com.powercess.blnav.data.datasource.local.BluetoothDeviceManagerDataSource
 
 /**
  * 首页 - 蓝牙设备管理页面
  * 显示网络请求结果和蓝牙设备信息
  *
+ * ==================== MVVM架构说明 ====================
+ *
+ * 严格遵循MVVM架构原则：
+ * - View层（本文件）：只负责UI渲染，通过ViewModel获取数据
+ * - ViewModel层：BluetoothViewModel，管理业务逻辑和状态
+ * - Model/Repository层：BluetoothRepository协调DataSource
+ * - DataSource层：BluetoothLocalDataSource、BluetoothDeviceManagerDataSource
+ *
+ * ❌ 禁止跨层访问：
+ * - View不能直接访问Repository
+ * - View不能直接访问DataSource
+ * - 所有数据必须通过ViewModel获取
+ *
  * ==================== 数据源说明 ====================
  *
- * 此页面现在使用全局BluetoothDeviceManagerDataSource作为实时设备数据源：
+ * 此页面通过ViewModel访问设备数据（managedDevices）：
+ *
+ * 数据流向：
+ * BluetoothLocalDataSource（扫描+过滤）
+ *   ↓ 同步设备
+ * BluetoothDeviceManagerDataSource（缓冲+去重）
+ *   ↓ 通过Repository暴露
+ * BluetoothRepository.managedDevices
+ *   ↓ 通过ViewModel暴露
+ * BluetoothViewModel.managedDevices
+ *   ↓ View订阅
+ * HomeScreen显示
  *
  * 1. 数据特性：
  *    - 已通过过滤规则检查的设备
@@ -37,7 +60,8 @@ import com.powercess.blnav.data.datasource.local.BluetoothDeviceManagerDataSourc
  *    c) 自动同步到全局管理器（BluetoothDeviceManagerDataSource）
  *    d) 管理器内部缓冲设备更新
  *    e) 每500ms发布一次设备列表
- *    f) 此页面订阅并实时显示
+ *    f) 通过Repository -> ViewModel -> View层层传递
+ *    g) 此页面订阅并实时显示
  *
  * 3. 性能优势：
  *    - UI更新频率受控（最多2次/秒，而不是数百次/秒）
@@ -57,31 +81,30 @@ fun HomeScreen(
     // 获取上下文用于ViewModel创建
     val context = LocalContext.current
 
-    // ==================== 关键：先创建ViewModel以初始化全局管理器 ====================
-    // 创建或获取ViewModel实例（用于扫描控制）
-    // 重要：ViewModel的构造函数会初始化BluetoothLocalDataSource，
-    // 后者会通过initializeWith()创建并初始化全局BluetoothDeviceManagerDataSource
-    // 因此必须先创建ViewModel，再获取管理器实例
+    // ==================== 创建ViewModel（MVVM架构的核心） ====================
+    // 创建或获取ViewModel实例（用于扫描控制和数据访问）
+    // ViewModel负责：
+    // 1. 管理蓝牙扫描状态
+    // 2. 通过Repository访问数据
+    // 3. 暴露UI所需的状态流
     val bluetoothViewModel = remember { BluetoothViewModel(context) }
 
-    // 订阅扫描状态和错误信息（来自ViewModel）
+    // ==================== 订阅ViewModel的状态（View层只与ViewModel交互）====================
+    // 订阅扫描状态和错误信息
     val isScanning by bluetoothViewModel.isScanning.collectAsState()
     val errorMessage by bluetoothViewModel.errorMessage.collectAsState()
 
-    // ==================== 现在获取全局设备管理器 ====================
-    // 获取全局设备管理器实例（已过滤、按500ms间隔更新的设备数据源）
-    // 此时管理器已由ViewModel初始化，getInstance()会返回同一实例
-    val deviceManager = remember { BluetoothDeviceManagerDataSource.getInstance() }
+    // ==================== 通过ViewModel访问设备数据（遵循MVVM）====================
+    // ✅ 正确：通过ViewModel获取数据
+    // ❌ 错误：直接调用 BluetoothDeviceManagerDataSource.getInstance()
+    //
+    // 数据流：DataSource -> Repository -> ViewModel -> View
+    val managedDevices by bluetoothViewModel.managedDevices.collectAsState()
 
-    // 订阅全局管理器的设备列表（已过滤、已去重、按策略定时发布）
-    // 这个数据源被所有需要蓝牙设备信息的模块共享使用
-    // 包含：MAC地址、设备名、RSSI信号强度
-    val managedDevices by deviceManager.managedDevices.collectAsState()
-
-    // 清理资源
+    // 清理资源（ViewModel会在Compose销毁时自动调用onCleared）
     DisposableEffect(Unit) {
         onDispose {
-            // ViewModel 会在 Compose 销毁时自动调用 onCleared
+            // ViewModel的生命周期由Compose管理，无需手动清理
         }
     }
 

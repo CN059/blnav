@@ -307,6 +307,26 @@ class BluetoothViewModel(context: Context) : ViewModel() {
     val discoveredDevices: StateFlow<List<BluetoothDeviceModel>> = bluetoothRepository.discoveredDevices
     val errorMessage: StateFlow<String?> = bluetoothRepository.errorMessage
 
+    /**
+     * 管理的设备列表流（来自全局设备管理器，通过Repository访问）
+     *
+     * 特性：
+     * - 已通过过滤规则检查
+     * - 已自动去重（相同MAC地址的设备会更新）
+     * - 按500ms间隔定时更新（避免高频刷新UI）
+     * - 包含完整信息：MAC地址、设备名、RSSI信号强度
+     *
+     * 推荐用于：
+     * - UI显示（避免频繁重绘，提升性能）
+     * - 定位计算（稳定的数据源）
+     * - 数据上传（批量处理）
+     *
+     * 与discoveredDevices的区别：
+     * - discoveredDevices：实时扫描结果，高频更新
+     * - managedDevices：缓冲后的结果，低频更新（500ms）
+     */
+    val managedDevices: StateFlow<List<BluetoothDeviceModel>> = bluetoothRepository.managedDevices
+
     // 过滤规则相关
     val filterRules: StateFlow<List<BluetoothFilterModel>> = filterRepository.filterRules
     val filterErrorMessage: StateFlow<String?> = filterRepository.errorMessage
