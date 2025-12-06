@@ -14,66 +14,32 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 蓝牙设备过滤器本地数据源
+ * 蓝牙设备过滤器本地数据源 - 规则管理器
  *
- * 负责与系统持久化存储的API交互，管理蓝牙设备过滤规则的本地数据
+ * 成员分组：
+ *   持久化：sharedPreferences - SharedPreferences实例
+ *   过滤规则：_filterRules (StateFlow) - 所有已配置的过滤规则列表
+ *   错误信息：_errorMessage (StateFlow) - 操作错误信息
  *
- * ==================== 功能说明 ====================
+ * 关键方法间的关系：
+ *   初始化 → loadAllFilters()
+ *        ↓ (从本地存储读取)
+ *   addFilter()/updateFilter()/deleteFilter()
+ *        ↓
+ *   saveFilters() → 序列化为JSON存储到SharedPreferences
+ *        ↓
+ *   _filterRules.value 发射新规则列表
  *
- * 1. CRUD操作：
- *    - addFilter(filter): 添加新的过滤规则
- *    - updateFilter(filter): 更新已存在的过滤规则
- *    - deleteFilter(filterId): 删除指定ID的过滤规则
- *    - getFilter(filterId): 获取单个过滤规则
- *    - clearAllFilters(): 清空所有过滤规则
+ * 对外服务：
+ *   1. shouldFilterDevice(name, mac): 检查设备是否应被过滤
+ *   2. addFilter/updateFilter/deleteFilter: 规则增删改
+ *   3. getEnabledFilters(): 获取所有启用的规则
+ *   4. filterRules: 规则列表的实时流
  *
- * 2. 查询操作：
- *    - getEnabledFilters(): 获取所有启用的过滤规则
- *    - getFiltersByType(filterType): 按类型获取过滤规则
- *    - filterByDeviceName(deviceName): 按设备名进行过滤
- *    - filterByMacAddress(macAddress): 按MAC地址进行过滤
- *    - shouldFilterDevice(deviceName, macAddress): 检查设备是否应过滤
- *
- * 3. 导入导出：
- *    - importFilters(filters): 批量导入过滤规则
- *    - exportFilters(): 导出所有过滤规则
- *
- * 4. 数据持久化：
- *    - 所有修改都自动持久化到SharedPreferences
- *    - 支持JSON格式的序列化/反序列化
- *    - 应用启动时自动从本地存储加载规则
- *
- * ==================== 白名单和黑名单逻辑 ====================
- *
- * 白名单模式（WHITELIST）：
- *   - 只有匹配白名单规则的设备才被允许
- *   - 不在白名单中的设备将被过滤（阻止）
- *   - 用于只连接指定设备的场景
- *
- * 黑名单模式（BLACKLIST）：
- *   - 匹配黑名单规则的设备将被过滤（阻止）
- *   - 其他设备都被允许连接
- *   - 用于阻止特定设备的场景
- *
- * ==================== 正则表达式支持 ====================
- *
- * enableRegex = false：使用简单的字符串匹配
- *   - 例如：过滤规则 "iPhone" 将匹配 "iPhone 12 Pro"
- *
- * enableRegex = true：使用正则表达式匹配
- *   - 例如：过滤规则 "^(iPhone|iPad).*" 将匹配 iPhone 或 iPad 开头的设备
- *   - 提供更灵活的匹配方式
- *
- * ==================== 数据流 ====================
- *
- * filterRules StateFlow：
- *   - 暴露当前所有过滤规则的状态流
- *   - UI可以通过 collectAsState() 订阅此流
- *   - 任何修改都会自动触发UI更新
- *
- * errorMessage StateFlow：
- *   - 暴露错误信息的状态流
- *   - 用于显示给用户的错误提示
+ * 过滤逻辑：
+ *   - 白名单模式：仅允许匹配白名单的设备
+ *   - 黑名单模式：阻止匹配黑名单的设备
+ *   - 支持正则表达式匹配
  */
 class BluetoothFilterLocalDataSource(private val context: Context) {
 

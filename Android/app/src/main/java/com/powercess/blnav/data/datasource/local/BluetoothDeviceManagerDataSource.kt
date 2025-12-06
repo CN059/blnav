@@ -7,82 +7,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 蓝牙设备全局管理数据源
+ * 蓝牙设备全局管理数据源 - 缓存和发布器
  *
- * ==================== 功能说明 ====================
+ * 成员：
+ *   - _managedDevices: 已发布的设备列表（StateFlow）
+ *   - pendingUpdates: 待发布的设备缓冲（Map<address, device>）
+ *   - lastPublishTime: 上次发布的时间戳
+ *   - scanStrategy: 扫描策略配置
  *
- * 为其他模块提供统一、实时但可控的蓝牙设备数据访问接口。
- * 基于扫描策略进行缓存管理，避免频繁的数据流更新，同时保证数据相对实时性。
+ * 关键方法间的关系：
+ *   updateDevice() → checkAndPublishUpdates() → publishUpdates()
+ *                                    ↓
+ *                          mergeDeviceList() (内部)
+ *                                    ↓
+ *                          _managedDevices.value 发射新数据
  *
- * ==================== 主要特性 ====================
- *
- * 1. 缓存管理：
- *    - 内部维护设备数据缓存
- *    - 按照扫描策略的updateInterval定时发布更新
- *    - 减少StateFlow更新频率，提高性能
- *
- * 2. 实时更新：
- *    - 扫描到的设备信息（RSSI、名字、MAC地址等）立即缓冲
- *    - 当满足发布条件时，立即通知订阅者
- *    - 支持多个模块同时订阅同一个数据源
- *
- * 3. 解耦设计：
- *    - 独立于BluetoothLocalDataSource的扫描逻辑
- *    - 其他模块只需依赖此数据源，无需关心扫描细节
- *    - 便于服务器上传、UI更新、本地存储等操作
- *
- * ==================== 使用示例 ====================
- *
- * ```
- * // 获取全局蓝牙设备管理数据源
- * val deviceManager = BluetoothDeviceManagerDataSource.getInstance()
- *
- * // 订阅设备列表更新
- * deviceManager.managedDevices.collect { devices ->
- *     // 设备列表已更新，可以上传至服务器进行定位
- *     sendToLocationServer(devices)
- * }
- *
- * // 获取当前缓存的设备列表
- * val currentDevices = deviceManager.getManagedDevices()
- *
- * // 订阅指定MAC地址的设备更新
- * deviceManager.getDevice("AA:BB:CC:DD:EE:FF").collect { device ->
- *     if (device != null) {
- *         updateDeviceUI(device)
- *     }
- * }
- * ```
- *
- * ==================== 数据流向 ====================
- *
- * BluetoothLocalDataSource
- *     ↓ (扫描发现设备)
- * BluetoothLocalDataSource.onDeviceDiscovered(device)
- *     ↓ (调用)
- * BluetoothDeviceManagerDataSource.updateDevice(device)
- *     ↓ (缓冲和定时检查)
- * BluetoothDeviceManagerDataSource.publishUpdates()
- *     ↓ (如果超过updateInterval)
- * managedDevices StateFlow 发射新数据
- *     ↓
- * 其他模块订阅者接收更新（例如定位服务）
- *
- * ==================== 内部缓存机制 ====================
- *
- * 1. 缓冲存储：
- *    - pendingUpdates: 存储待发布的设备更新
- *    - managedDevices: 已发布的设备列表
- *
- * 2. 发布策略：
- *    - 每次updateDevice()调用时检查是否需要发布
- *    - 如果距上次发布 >= updateInterval，立即发布所有待更新
- *    - 否则继续缓冲
- *
- * 3. 性能优化：
- *    - 避免重复的MAC地址存储
- *    - 只发布有变化的设备集合
- *    - 支持外部控制发布时机（手动发布）
+ * 对外服务：
+ *   1. updateDevice()/updateDevices(): 接收扫描设备并缓冲
+ *   2. managedDevices: 提供实时的设备列表流
+ *   3. getDevice(macAddress): 获取特定设备的流
+ *   4. checkAndPublishUpdates(): 检查并发布更新（支持外部触发）
+ *   5. forcePublish(): 强制立即发布所有缓冲的设备
  */
 class BluetoothDeviceManagerDataSource(
     private val scanStrategy: BluetoothScanStrategy = BluetoothScanStrategy()
@@ -167,6 +112,7 @@ class BluetoothDeviceManagerDataSource(
      *
      * @param devices 要更新的蓝牙设备列表
      */
+    @Suppress("unused")
     fun updateDevices(devices: List<BluetoothDeviceModel>) {
         devices.forEach { device ->
             pendingUpdates[device.address] = device
@@ -231,119 +177,110 @@ class BluetoothDeviceManagerDataSource(
     }
 
     /**
-     * 内部发布方法
-     *
-     * 将缓冲中的设备与已发布的列表合并，生成新的设备列表并发射。
-     *
-     * ==================== 修复说明 ====================
-     *
-     * 这个方法是动态更新的关键。修复点：
-     * 1. 使用addressToIndex映射直接查找索引，避免重复的indexOfFirst()
-     * 2. 清晰的合并逻辑：更新已有设备，添加新设备
-     * 3. 强制更新StateFlow的值，即使内容相似也会触发订阅者更新
-     * 4. 详细的调试日志记录设备变化
+     * 内部发布方法 - 负责将缓冲的设备发布到StateFlow
      */
     private fun publishUpdates(currentTime: Long) {
         if (pendingUpdates.isEmpty()) {
             AppLogger.debug(
                 "BluetoothDeviceManagerDataSource",
-                "⏭️ pendingUpdates为空，跳过发布 [时间: $currentTime]"
+                "⏭️ pendingUpdates为空，跳过发布"
             )
             return
         }
 
-        AppLogger.debug(
-            "BluetoothDeviceManagerDataSource",
-            "🔄 开始处理发布 [时间: $currentTime] | 缓冲设备数: ${pendingUpdates.size}"
-        )
+        // 合并设备列表并获取统计信息
+        val (mergedDevices, stats) = mergeDeviceList()
 
-        // 合并已发布的设备和新的更新
+        // 更新StateFlow和时间戳
+        _managedDevices.value = mergedDevices
+        lastPublishTime = currentTime
+        pendingUpdates.clear()
+
+        // 输出发布日志
+        logPublishSummary(stats)
+    }
+
+    /**
+     * 合并待发布的设备与已发布的设备列表
+     * 返回合并后的列表和统计信息
+     */
+    private fun mergeDeviceList(): Pair<List<BluetoothDeviceModel>, PublishStats> {
         val currentDevices = _managedDevices.value.toMutableList()
+        val addressToIndex = currentDevices.mapIndexed { index, device -> device.address to index }.toMap()
 
-        // 创建已发布设备的地址→索引映射
-        val addressToIndex = mutableMapOf<String, Int>()
-        currentDevices.forEachIndexed { index, device ->
-            addressToIndex[device.address] = index
-        }
-
-        var updatedCount = 0
-        var addedCount = 0
+        val stats = PublishStats()
         val updatedAddresses = mutableListOf<String>()
         val addedAddresses = mutableListOf<String>()
 
-        // 遍历待发布的设备，进行更新或添加
+        // 遍历待发布设备，进行更新或添加
         pendingUpdates.forEach { (address, device) ->
             val existingIndex = addressToIndex[address]
             if (existingIndex != null) {
                 // 更新已有设备
                 currentDevices[existingIndex] = device
-                updatedCount++
+                stats.updatedCount++
                 updatedAddresses.add("${device.name}($address, RSSI=${device.rssi}dBm)")
-                AppLogger.debug(
-                    "BluetoothDeviceManagerDataSource",
-                    "更新设备: ${device.name} | MAC: $address | RSSI: ${device.rssi}dBm"
-                )
             } else {
                 // 添加新设备
                 currentDevices.add(device)
-                addedCount++
+                stats.addedCount++
                 addedAddresses.add("${device.name}($address, RSSI=${device.rssi}dBm)")
-                AppLogger.debug(
-                    "BluetoothDeviceManagerDataSource",
-                    "新增设备: ${device.name} | MAC: $address | RSSI: ${device.rssi}dBm"
-                )
             }
         }
 
-        // 强制更新StateFlow值，触发订阅者更新
-        // 即使列表内容相同，重新赋值也会触发collectAsState()
-        _managedDevices.value = currentDevices.toList()
+        stats.totalCount = currentDevices.size
+        stats.updatedAddresses = updatedAddresses
+        stats.addedAddresses = addedAddresses
 
-        lastPublishTime = currentTime
-        pendingUpdates.clear()
+        return Pair(currentDevices.toList(), stats)
+    }
 
-        // 详细的发布汇总日志
+    /**
+     * 输出发布操作的统计日志
+     */
+    private fun logPublishSummary(stats: PublishStats) {
         AppLogger.debug(
             "BluetoothDeviceManagerDataSource",
             "═══════════════════════════════════════════════════"
         )
         AppLogger.debug(
             "BluetoothDeviceManagerDataSource",
-            "发布设备更新汇总 - 总数=${currentDevices.size}, 更新=$updatedCount, 新增=$addedCount"
+            "✅ 发布设备更新 - 总数=${stats.totalCount}, 更新=${stats.updatedCount}, 新增=${stats.addedCount}"
         )
-        if (updatedAddresses.isNotEmpty()) {
+        if (stats.updatedAddresses.isNotEmpty()) {
             AppLogger.debug(
                 "BluetoothDeviceManagerDataSource",
-                "已更新设备 ($updatedCount):"
+                "已更新设备 (${stats.updatedCount}):"
             )
-            updatedAddresses.forEach { addr ->
-                AppLogger.debug(
-                    "BluetoothDeviceManagerDataSource",
-                    "  ├─ $addr"
-                )
+            stats.updatedAddresses.forEach { addr ->
+                AppLogger.debug("BluetoothDeviceManagerDataSource", "  ├─ $addr")
             }
         }
-        if (addedAddresses.isNotEmpty()) {
+        if (stats.addedAddresses.isNotEmpty()) {
             AppLogger.debug(
                 "BluetoothDeviceManagerDataSource",
-                "新增设备 ($addedCount):"
+                "新增设备 (${stats.addedCount}):"
             )
-            addedAddresses.forEach { addr ->
-                AppLogger.debug(
-                    "BluetoothDeviceManagerDataSource",
-                    "  ├─ $addr"
-                )
+            stats.addedAddresses.forEach { addr ->
+                AppLogger.debug("BluetoothDeviceManagerDataSource", "  ├─ $addr")
             }
         }
         AppLogger.debug(
             "BluetoothDeviceManagerDataSource",
             "═══════════════════════════════════════════════════"
-        )
-        AppLogger.debug(
-            "BluetoothDeviceManagerDataSource",
-            "✅ 发布完成 | StateFlow已更新 | 订阅者将接收新数据"
         )
     }
+
+    /**
+     * 内部数据类 - 用于保存发布统计信息
+     */
+    private data class PublishStats(
+        var totalCount: Int = 0,
+        var updatedCount: Int = 0,
+        var addedCount: Int = 0,
+        var updatedAddresses: List<String> = emptyList(),
+        var addedAddresses: List<String> = emptyList()
+    )
 
     /**
      * 获取当前缓存的所有管理设备
@@ -363,6 +300,7 @@ class BluetoothDeviceManagerDataSource(
      * @param macAddress 设备的MAC地址
      * @return Flow<BluetoothDeviceModel?>，未找到则为null
      */
+    @Suppress("unused")
     fun getDevice(macAddress: String): kotlinx.coroutines.flow.Flow<BluetoothDeviceModel?> {
         return managedDevices.let { flow ->
             object : kotlinx.coroutines.flow.Flow<BluetoothDeviceModel?> {
