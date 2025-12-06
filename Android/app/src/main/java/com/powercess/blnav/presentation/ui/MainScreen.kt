@@ -21,12 +21,9 @@ import com.powercess.blnav.presentation.viewmodel.BluetoothViewModel
 
 /**
  * 主屏幕 - 包含底部导航栏和内容区域
- *
- * @param networkResult 网络请求结果，传递给首页显示
  */
 @Composable
 fun MainScreen(
-    networkResult: String,
     modifier: Modifier = Modifier
 ) {
     // Compose Navigation 提供的函数，创建或复用一个 NavController 实例；
@@ -61,7 +58,6 @@ fun MainScreen(
         // 内容区域通过 NavigationGraph(...) 填充，并应用 Modifier.padding(innerPadding)。
         NavigationGraph(
             navController = navController,
-            networkResult = networkResult,
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -144,7 +140,6 @@ fun BottomNavigationBar(
 @Composable
 fun NavigationGraph(
     navController: NavHostController,
-    networkResult: String,
     modifier: Modifier = Modifier
 ) {
     // 为了在composable中使用ViewModel，需要通过LocalContext获取context
@@ -159,7 +154,7 @@ fun NavigationGraph(
 
         // 首页路由
         composable(route = BottomNavItem.Home.route) {
-            HomeScreen(networkResult = networkResult)
+            HomeScreen()
         }
 
         // 地图页路由
@@ -187,4 +182,3 @@ fun NavigationGraph(
         }
     }
 }
-
